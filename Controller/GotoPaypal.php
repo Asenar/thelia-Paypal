@@ -70,37 +70,47 @@ class GotoPaypal extends BaseFrontController
         $api = new PaypalApiCredentials($config);
         $redirect_api = new PaypalApiManager($config);
         $sandbox=$api->getConfig()->getSandbox();
+        $send_cart_detail = false; // @TODO moving that in admin interface
         $products = array(array());
         $i=0;
         $logger = new PaypalApiLogManager();
 
-        /*
-         * Store products into 2d array $products
-         */
-        $products_amount = 0;
-        foreach ($order->getOrderProducts() as $product) {
-            if ($product !== null) {
-                $amount = floatval($product->getWasInPromo()  ? $product->getPromoPrice():$product->getPrice());
-                foreach ($product->getOrderProductTaxes() as $tax) {
-                    $amount+= ($product->getWasInPromo() ? $tax->getPromoAmount():$tax->getAmount());
+        if($send_cart_detail)
+        {
+            /*
+             * Store products into 2d array $products
+             */
+            $products_amount = 0;
+            foreach ($order->getOrderProducts() as $product) {
+                if ($product !== null) {
+                    $amount = floatval($product->getWasInPromo()  ? $product->getPromoPrice():$product->getPrice());
+                    foreach ($product->getOrderProductTaxes() as $tax) {
+                        $amount+= ($product->getWasInPromo() ? $tax->getPromoAmount():$tax->getAmount());
+                    }
+                    $products_amount+=$amount*$product->getQuantity();
+                    $products[0]["NAME".$i]=urlencode($product->getTitle());
+                    $products[0]["AMT".$i]=urlencode(round($amount,2));
+                    $products[0]["QTY".$i]=urlencode($product->getQuantity());
+                    $i++;
                 }
-                $products_amount+=$amount*$product->getQuantity();
-                $products[0]["NAME".$i]=urlencode($product->getTitle());
-                $products[0]["AMT".$i]=urlencode(round($amount,2));
-                $products[0]["QTY".$i]=urlencode($product->getQuantity());
-                $i++;
+            }
+
+            /*
+             * Compute difference between prodcts total and cart amount
+             * -> get Coupons.
+             */
+            $delta = round($products_amount - $order->getTotalAmount($useless, false), 2);
+            if ($delta > 0) {
+                $products[0]["NAME".$i]=Translator::getInstance()->trans("Discount");
+                $products[0]["AMT".$i]=-$delta;
+                $products[0]["QTY".$i]=1;
             }
         }
-
-        /*
-         * Compute difference between prodcts total and cart amount
-         * -> get Coupons.
-         */
-        $delta = round($products_amount - $order->getTotalAmount($useless, false), 2);
-        if ($delta > 0) {
-            $products[0]["NAME".$i]=Translator::getInstance()->trans("Discount");
-            $products[0]["AMT".$i]=-$delta;
-            $products[0]["QTY".$i]=1;
+        else
+        {
+            $products[0]["NAME" . $i] = urlencode(Translator::getInstance()->trans("Order").' '.$order_id);
+            $products[0]["AMT" . $i] = round($order->getTotalAmount($useless, false),2);
+            $products[0]["QTY" . $i] = 1;
         }
 
         /*
